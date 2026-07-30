@@ -390,6 +390,9 @@ def add_uom_data():
 		open(frappe.get_app_path("erpnext", "setup", "setup_wizard", "data", "uom_data.json")).read()
 	)
 	for d in uoms:
+		if d.get("category") and not frappe.db.exists("UOM Category", d.get("category")):
+			frappe.get_doc({"doctype": "UOM Category", "category_name": d.get("category")}).db_insert()
+
 		if not frappe.db.exists("UOM", d.get("uom_name")):
 			doc = frappe.new_doc("UOM")
 			doc.update(d)
@@ -402,9 +405,6 @@ def add_uom_data():
 		).read()
 	)
 	for d in uom_conversions:
-		if not frappe.db.exists("UOM Category", d.get("category")):
-			frappe.get_doc({"doctype": "UOM Category", "category_name": d.get("category")}).db_insert()
-
 		if not frappe.db.exists(
 			"UOM Conversion Factor",
 			{"from_uom": d.get("from_uom"), "to_uom": d.get("to_uom")},
@@ -534,7 +534,6 @@ def update_stock_settings():
 	stock_settings = frappe.get_doc("Stock Settings")
 	stock_settings.item_naming_by = "Item Code"
 	stock_settings.valuation_method = "FIFO"
-	stock_settings.default_warehouse = frappe.db.get_value("Warehouse", {"warehouse_name": _("Stores")})
 	stock_settings.stock_uom = "Nos"
 	stock_settings.auto_indent = 1
 	stock_settings.auto_insert_price_list_rate_if_missing = 1
@@ -567,6 +566,7 @@ def create_bank_account(args, demo=False):
 			}
 		)
 		try:
+			frappe.db.savepoint("create_bank_account")
 			doc = bank_account.insert()
 
 			if args.get("set_default"):
@@ -583,6 +583,7 @@ def create_bank_account(args, demo=False):
 		except RootNotEditable:
 			frappe.throw(frappe._("Bank account cannot be named as {0}").format(args.get("bank_account")))
 		except frappe.DuplicateEntryError:
+			frappe.db.rollback(save_point="create_bank_account")  # preserve transaction in postgres
 			# bank account same as a CoA entry
 			pass
 
